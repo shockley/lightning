@@ -9,3 +9,5 @@ from .impl.svrg import SVRGClassifier
 from .impl.dual_cd import LinearSVC
 from .impl.primal_newton import KernelSVC
 from .impl.karma_sgd import KSGDClassifier
+from .impl.karma_sgd import TSGDClassifier
+

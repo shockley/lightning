@@ -7,6 +7,11 @@
 #         Peter Prettenhofer (loss functions)
 # License: BSD
 
+from libc.stdlib cimport rand
+cdef extern from "stdlib.h":
+    int RAND_MAX
+
+
 import numpy as np
 cimport numpy as np
 
@@ -921,3 +926,168 @@ def _karma_predict(self,
     test_acc = 1.0 - test_err/n_test_samples
     return test_acc
 
+
+def _binary_sgd_test(self,
+                np.ndarray[double, ndim=2, mode='c'] W,
+                np.ndarray[double, ndim=1] intercepts,
+                int k,
+                RowDataset X,
+                np.ndarray[double, ndim=1] y,
+                RowDataset X_test,
+                np.ndarray[double, ndim=1] y_test,
+                LossFunction loss,
+                int penalty,
+                double alpha,
+                int learning_rate,
+                double eta0,
+                double power_t,
+                int fit_intercept,
+                double intercept_decay,
+                int max_iter,
+                int shuffle,
+                random_state,
+                callback,
+                int n_calls,
+                int verbose,
+                double black_out,
+                int disp_freq,
+                int test_freq):
+    
+    cdef Py_ssize_t n_samples = X.get_n_samples()
+    cdef Py_ssize_t n_features = X.get_n_features()
+
+    # Initialization
+    print "disp_freq",disp_freq,"test_freq",test_freq
+    cdef int i, ii
+    cdef LONG t
+    cdef double update, update_eta, update_eta_scaled, pred, eta, scale
+    cdef double w_scale = 1.0
+    cdef double intercept = 0.0
+    cdef int has_callback = callback is not None
+    cdef int nn_l1 = penalty == -1
+
+    cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
+    timestamps = np.zeros(n_features, dtype=np.int64)
+
+    cdef np.ndarray[double, ndim=1, mode='c'] delta
+    delta = np.zeros(max_iter + 1, dtype=np.float64)
+
+    # Data pointers
+    cdef double* data
+    cdef int* indices
+    cdef int n_nz
+
+    # Training indices.
+    cdef np.ndarray[int, ndim=1, mode='c'] index
+    index = np.arange(n_samples, dtype=np.int32)
+
+    cdef np.ndarray[int, ndim=1, mode='c'] indices_new
+    cdef int nnz_new, i_test, eid = 0
+    cdef double train_regret = 0.0
+    cdef double train_err = 0.0
+    cdef double test_loss = 0.0
+    cdef double test_err = 0.0
+    cdef Py_ssize_t n_samples_test = X_test.get_n_samples()
+
+    for t in xrange(1, max_iter + 1):
+        # Retrieve current training instance and shuffle if necessary.
+        ii = (t-1) % n_samples
+        if shuffle and ii == 0:
+            eid = int(t-1)/n_samples
+            random_state.shuffle(index)
+        if t > 0 and (t-1) % disp_freq == 0:
+          print "epoch", eid, "iter", ii, "train_regret", train_regret/t, "train_err", train_err/t
+
+        if (t-1) % test_freq == 0:
+          test_err = 0.0
+          test_loss = 0.0
+          for i_test in xrange(1, n_samples_test + 1):
+            X_test.get_row_ptr(i_test, &indices, &data, &n_nz)
+            pred = _dot(W, k, indices, data, n_nz)
+            pred *= w_scale
+            pred += intercepts[k]
+            if pred * y_test[i_test] < 0:
+              test_err += 1.0
+            if pred == 0: # we at least will guess randomly
+              test_err += 0.5
+            test_loss += loss.loss(pred, y_test[i_test])
+          test_err /= n_samples_test
+          test_loss /= n_samples_test
+          print "epoch", eid, "iter", ii, "test_loss ", test_loss, "test_err ",test_err
+        
+        i = index[ii]
+        eta = _get_eta(learning_rate, alpha, eta0, power_t, t)
+
+        # Retrieve row.
+        X.get_row_ptr(i, &indices, &data, &n_nz)
+
+        #black_out the data
+        if black_out > 0.0 and black_out <= 1.0:
+          
+          indices_new= -np.ones(n_nz, dtype=np.int32)
+          nnz_new = 0
+          for iii in xrange(0, n_nz):
+            if rand() / float(RAND_MAX) > black_out:
+            #if np.random.rand() > black_out:
+              indices_new[nnz_new] = indices[iii]
+              nnz_new = nnz_new + 1
+          n_nz = nnz_new
+          #print 'indices_new',indices_new
+          indices_new= indices_new[0:n_nz-1]
+          indices = <int*> indices_new.data
+
+
+        if penalty == 1 or nn_l1: # L1-regularization.
+            _l1_update(eta, alpha,
+                       <double*>delta.data, <LONG*>timestamps.data,
+                       W, data, indices, n_nz, k, t, nn_l1)
+
+        # Compute current prediction.
+        pred = _dot(W, k, indices, data, n_nz)
+        pred *= w_scale
+        pred += intercepts[k]
+
+        # print training error
+        if pred * y[i] < 0:
+          train_err += 1.0
+        if pred == 0: # we at least will guess randomly
+          train_err += 0.5
+        train_regret += loss.loss(pred, y[i])
+
+        update = loss.get_update(pred, y[i])
+
+        
+
+        # Update if necessary.
+        if update != 0:
+            update_eta = update * eta
+            update_eta_scaled = update_eta / w_scale
+
+            _add(W, k, indices, data, n_nz, update_eta_scaled)
+
+            if fit_intercept:
+                intercepts[k] += update_eta * intercept_decay
+
+        if penalty == 2: # L2-regularization.
+            w_scale *= (1 - alpha * eta)
+        elif penalty == -2: # NN constraints + L2-regularization.
+            w_scale *= 1 / (1 + alpha * eta)
+            _nnl2_update(W, indices, n_nz, k)
+
+        # Take care of possible underflow.
+        if w_scale < 1e-9:
+            W[k] *= w_scale
+            w_scale = 1.0
+
+        # Callback
+        if has_callback and t % n_calls == 0:
+            ret = callback(self)
+            if ret is not None:
+                break
+
+    # Finalize.
+    if penalty == 1 or nn_l1:
+        _l1_finalize(<double*>delta.data, <LONG*>timestamps.data,
+                     W, k, t, nn_l1)
+    elif w_scale != 1.0:
+        W[k] *= w_scale

@@ -336,8 +336,7 @@ def _binary_sgd(self,
                 random_state,
                 callback,
                 int n_calls,
-                int verbose,
-                double black_out):
+                int verbose):
 
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = X.get_n_features()
@@ -366,8 +365,6 @@ def _binary_sgd(self,
     cdef np.ndarray[int, ndim=1, mode='c'] index
     index = np.arange(n_samples, dtype=np.int32)
 
-    cdef np.ndarray[int, ndim=1, mode='c'] indices_new
-    cdef int nnz_new
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance and shuffle if necessary.
         ii = (t-1) % n_samples
@@ -378,23 +375,6 @@ def _binary_sgd(self,
 
         # Retrieve row.
         X.get_row_ptr(i, &indices, &data, &n_nz)
-
-        #black_out the data
-        if black_out > 0.0 and black_out <= 1.0:
-          
-          indices_new= np.zeros(n_nz, dtype=np.int64)
-          nnz_new = 0
-          for i in xrange(0, n_nz):
-            if np.random.rand > black_out:
-              indices_new[nnz_new] = indices[i]
-              nnz_new = nnz_new + 1
-          n_nz = nnz_new
-          indices_new= indices_new[0:n_nz-1]
-          #&indices = <int*> indices_new[0:n_nz-1].data
-          #indices_new = indices_new[0:n_nz-1].data
-          indices = <int*> indices_new.data
-          print "blacked out with", black_out
-
 
         if penalty == 1 or nn_l1: # L1-regularization.
             _l1_update(eta, alpha,
@@ -766,4 +746,3 @@ def _multiclass_sgd(self,
     elif penalty == 12:
         _l1l2_finalize(<double*>delta.data, <LONG*>timestamps.data,
                        W, t)
-

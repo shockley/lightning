@@ -9,6 +9,9 @@ lightning
 lightning is a library for large-scale linear classification, regression and
 ranking in Python.
 
+Install From Source, type::
+  sudo pip2.7 install ./ --force-reinstall --upgrade
+
 Highlights:
 
 - follows the `scikit-learn <http://scikit-learn.org>`_ API conventions
