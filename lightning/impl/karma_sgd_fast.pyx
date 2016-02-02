@@ -336,8 +336,7 @@ def _binary_sgd(self,
                 random_state,
                 callback,
                 int n_calls,
-                int verbose,
-                double black_out):
+                int verbose):
 
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = X.get_n_features()
@@ -366,8 +365,10 @@ def _binary_sgd(self,
     cdef np.ndarray[int, ndim=1, mode='c'] index
     index = np.arange(n_samples, dtype=np.int32)
 
-    cdef np.ndarray[int, ndim=1, mode='c'] indices_new
-    cdef int nnz_new
+
+    cdef double regret = 0.0
+    cdef double erred = 0.0
+
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance and shuffle if necessary.
         ii = (t-1) % n_samples
@@ -378,21 +379,6 @@ def _binary_sgd(self,
 
         # Retrieve row.
         X.get_row_ptr(i, &indices, &data, &n_nz)
-
-        #black out the data
-        if black_out > 0.0 and black_out <= 1.0:
-          
-          indices_new= np.zeros(n_nz, dtype=np.int64)
-          nnz_new = 0
-          for i in xrange(0, n_nz):
-            if np.random.rand > black_out:
-              indices_new[nnz_new] = indices[i]
-              nnz_new = nnz_new + 1
-          n_nz = nnz_new
-          #&indices = <int*> indices_new[0:n_nz-1].data
-          indices = <int*> indices_new[0:n_nz-1].data
-          print "blacked out with", black_out
-
 
         if penalty == 1 or nn_l1: # L1-regularization.
             _l1_update(eta, alpha,
@@ -405,6 +391,12 @@ def _binary_sgd(self,
         pred += intercepts[k]
 
         update = loss.get_update(pred, y[i])
+
+
+        if pred*y[i] < 0:
+          erred += 1.0
+        regret += loss.loss(pred, y[i])
+        print "regret =", regret, t, max_iter, pred, y[i]
 
         # Update if necessary.
         if update != 0:
@@ -439,6 +431,11 @@ def _binary_sgd(self,
                      W, k, t, nn_l1)
     elif w_scale != 1.0:
         W[k] *= w_scale
+
+    regret = regret/max_iter
+    erred = erred/max_iter
+    print "final regret =", regret
+    print "final erred =", erred
 
 
 cdef void _softmax(double* scores, int size):
@@ -659,109 +656,268 @@ cdef void _l1l2_finalize(double* delta,
             W[l, j] *= scale
 
 
-def _multiclass_sgd(self,
-                    np.ndarray[double, ndim=2, mode='c'] W,
-                    np.ndarray[double, ndim=1] intercepts,
-                    RowDataset X,
-                    np.ndarray[int, ndim=1] y,
-                    MulticlassLossFunction loss,
-                    int penalty,
-                    double alpha,
-                    int learning_rate,
-                    double eta0,
-                    double power_t,
-                    int fit_intercept,
-                    double intercept_decay,
-                    int max_iter,
-                    int shuffle,
-                    random_state,
-                    callback,
-                    int n_calls,
-                    int verbose):
 
+
+
+#shockley
+cdef double _k_pred(np.ndarray[double, ndim=1, mode='c'] U,
+                 #np.ndarray[double, ndim=2, mode='c'] K,
+                 np.ndarray[int, ndim=1, mode='c'] S,
+                 RowDataset X,
+                 double* data1,
+                 int* indices1,
+                 int n_nz1,
+                 double gamma,
+                 int t):
+    pred = 0.0
+    for j in xrange(0,t-1):
+        #print "U[t-1,j] K[S[t-1],S[j]]" , U[t-1,j],K[S[t-1],S[j]]
+        jj=S[j]
+        #kernel = K[ii, jj]
+        #if kernel == 0:
+        kernel = _kernel(gamma, X, data1, indices1, n_nz1, jj)
+        #kernel = _kernel(gamma, X, K, ii, jj)
+        pred += U[j] * kernel
+    return pred
+
+
+# cdef double _kernel(double gamma,
+#                  int *indices1,
+#                  int *indices2,
+#                  double * data1,
+#                  double * data2,
+#                  int n_nz1,
+#                  int n_nz2):
+
+cdef double _kernel(double gamma,
+                RowDataset X,
+                double* data1,
+                int* indices1,
+                int n_nz1,
+                #np.ndarray[double, ndim=2, mode='c'] K,
+                int j):
+
+    #if K[i,j] == 0:
+    #if True:
+    cdef double* data2
+    cdef int* indices2
+    cdef int n_nz2
+    X.get_row_ptr(j, &indices2, &data2, &n_nz2)
+
+    kernel = 0.0
+    inter_nnz = 1.0
+    for kk in xrange(n_nz1):
+        for jj in xrange(n_nz2):
+            if indices1[kk]==indices2[jj]:
+              upd = data1[kk] * data2[jj]
+              kernel += upd
+              inter_nnz += 1.0
+    scale = 1.0
+    if inter_nnz != 1.0:
+      scale = (pow(inter_nnz, gamma) - 1.0) / (inter_nnz-1.0)
+    #print scale
+    kernel *= scale
+    #K[i,j] = kernel #indicates computed
+    #K[j,i] = kernel
+    #return K[i,j]
+    return kernel
+
+# cdef _compute_kernel(double gamma,
+#                 np.ndarray[double, ndim=2, mode='c'] K,
+#                 RowDataset X):
+#     # Data pointers
+#     cdef double* data1
+#     cdef double* data2
+#     cdef int* indices1
+#     cdef int* indices2
+#     cdef int n_nz1
+#     cdef int n_nz2
+#     n_samples = X.get_n_samples()
+#     for i in xrange(0, n_samples):
+#         for j in xrange(0, n_samples):
+#             if j<=i:
+#                 X.get_row_ptr(i, &indices1, &data1, &n_nz1)
+#                 X.get_row_ptr(j, &indices2, &data2, &n_nz2)
+#                 K[i,j] = _kernel(gamma,indices1,indices2,data1,data2,n_nz1,n_nz2)
+#     for i in xrange(0, n_samples):
+#         for j in xrange(0, n_samples):
+#             if j>i:
+#                 K[i,j] = K[j,i]
+
+def _karma_sgd(self,
+                np.ndarray[double, ndim=1, mode='c'] U,
+                np.ndarray[int, ndim=1, mode='c'] S,
+                np.ndarray[double, ndim=1] intercepts,
+                int k,
+                RowDataset X,
+                np.ndarray[double, ndim=1] y,
+                LossFunction loss,
+                int penalty,
+                double alpha,
+                int learning_rate,
+                double eta0,
+                double power_t,
+                int fit_intercept,
+                double intercept_decay,
+                int max_iter,
+                int shuffle,
+                random_state,
+                callback,
+                int n_calls,
+                double gamma,
+                int verbose):
+    #for binary label, and for now: k=1, intercepts=[0.0]
     cdef Py_ssize_t n_samples = X.get_n_samples()
     cdef Py_ssize_t n_features = X.get_n_features()
-    cdef Py_ssize_t n_vectors = W.shape[0]
 
     # Initialization
-    cdef int it, i, ii, l
+    cdef int i, ii
     cdef LONG t
-    cdef double pred, eta, scale, norm
-    cdef double intercept = 0.0
-    cdef np.ndarray[double, ndim=1, mode='c'] w_scales
-    w_scales = np.ones(n_vectors, dtype=np.float64)
-    cdef np.ndarray[double, ndim=1, mode='c'] scores
-    scores = np.ones(n_vectors, dtype=np.float64)
-    cdef int all_zero
+    cdef double update, update_eta, pred, eta
+
     cdef int has_callback = callback is not None
+    cdef int nn_l1 = penalty == -1
+
 
     cdef np.ndarray[LONG, ndim=1, mode='c'] timestamps
     timestamps = np.zeros(n_features, dtype=np.int64)
 
-    cdef np.ndarray[double, ndim=1, mode='c'] delta
-    delta = np.zeros(max_iter + 1, dtype=np.float64)
 
-    # Data pointers
-    cdef double* data
-    cdef int* indices
-    cdef int n_nz
+
+    #my definitions
+    #cdef np.ndarray[double, ndim=2, mode='c'] K
+    #K = np.zeros((n_samples,n_samples), dtype=np.float64)
+
+    #_compute_kernel(gamma, K, X)
+
+    cdef double train_regret = 0.0
+    cdef double train_err = 0.0
+
+    # n_training_samples = int(n_samples * split)
+    # n_test_samples = n_samples - n_training_samples
+
+    #max_iter = max_iter * n_training_samples
+
+    #test_bit = max_train_iter + 1
 
     # Training indices.
     cdef np.ndarray[int, ndim=1, mode='c'] index
     index = np.arange(n_samples, dtype=np.int32)
 
+    # this shuffles the splitting of training and testing
+    # if shuffle: 
+    #     random_state.shuffle(index)
+    # train_index = index[0:n_training_samples]
+
+    #S for indices of selected samples, the last element for testing
+    #cdef np.ndarray[int, ndim=1, mode='c'] S
+    #S = np.zeros(max_train_iter+1, dtype=np.int32)
+
+    #U for updates, the last element for testing
+    #cdef np.ndarray[double, ndim=1, mode='c'] U
+    #U = np.zeros(max_train_iter+1, dtype=np.float64)
+    
+    #training
+    cdef double* data1
+    cdef int* indices1
+    cdef int n_nz1
+
     for t in xrange(1, max_iter + 1):
         # Retrieve current training instance and shuffle if necessary.
         ii = (t-1) % n_samples
+        # this shuffles the current training indices only
         if shuffle and ii == 0:
-            random_state.shuffle(index)
+          random_state.shuffle(index)
         i = index[ii]
+
+        U[0] = 0
+        if t==1:
+          continue
+
+        S[t-1] = i
+        # for pegasos, eta = 1.0 / (alpha * t)
         eta = _get_eta(learning_rate, alpha, eta0, power_t, t)
 
-        # Retrieve row.
-        X.get_row_ptr(i, &indices, &data, &n_nz)
+        # Compute current prediction.
+        #pred = _k_pred(U, K, S, X, gamma, t)
+        X.get_row_ptr(i, &indices1, &data1, &n_nz1)
+        
+        pred = _k_pred(U, S, X, data1, indices1, n_nz1, gamma, t)
 
-        # L1/L2 regularization.
-        if penalty == 12:
-            _l1l2_update(eta, alpha,
-                         <double*>delta.data, <LONG*>timestamps.data,
-                         W, data, indices, n_nz, t)
+        #for hinge loss: update=y[i] if erred, 0 if not
+        update = loss.get_update(pred, y[i])
+        if pred * y[i] < 0:
+          train_err += 1.0
+        if pred == 0: # we at least will guess randomly
+          train_err += 0.5
+        train_regret += loss.loss(pred, y[i])
+        if verbose and t%3000 == 1:
+          print "train_err =", train_err, t, max_iter, pred, y[i]
+        # Update if necessary.
+        # if update != 0:
+        #     update_eta = update * eta
+        #for j in xrange(t-1):
+        U = (1 - alpha * eta) * U
+        U[t-1] = update * eta
+    #if verbose:
+    
+    train_regret = train_regret/max_iter
+    train_err = train_err/max_iter
+    #print "final train_regret =", train_regret
+    if verbose:
+      print "karma final train_err =", train_err
+    return (U, train_err)
 
-        # Compute predictions.
-        for l in xrange(n_vectors):
-            scores[l] = _dot(W, l, indices, data, n_nz)
-            scores[l] *= w_scales[l]
-            scores[l] += intercepts[l]
+def _karma_predict(self,
+                RowDataset train_X,
+                RowDataset test_X,
+                np.ndarray[double, ndim=1] y,
+                double gamma,
+                np.ndarray[double, ndim=1, mode='c'] U,
+                np.ndarray[int, ndim=1, mode='c'] S,
+                int verbose):
+    #print "test",gamma
+    n_test_samples = int(test_X.get_n_samples())
+    n_train_samples = int(train_X.get_n_samples())
+    T = n_train_samples
 
-        # Update weight vectors.
-        loss.update(<double*>scores.data, y[i],
-                    data, indices, n_nz,
-                    i, W, <double*>w_scales.data, <double*>intercepts.data,
-                    intercept_decay, eta, fit_intercept)
+    cdef double* data1,
+    cdef int* indices1,
+    cdef int n_nz1,
 
-        # L2 regularization.
-        if penalty == 2:
-            scale = (1 - alpha * eta)
-            for l in xrange(n_vectors):
-                w_scales[l] *= scale
+    cdef double test_err = 0.0
+    for i in xrange(0, n_test_samples):
+        #select test samples sequentially
 
-                # Take care of possible underflow.
-                if w_scales[l] < 1e-9:
-                    W[l] *= w_scales[l]
-                    w_scales[l] = 1.0
+        S[T] = i
+        test_X.get_row_ptr(i, &indices1, &data1, &n_nz1)
+        pred = _k_pred(U, S, train_X, data1, indices1, n_nz1, gamma, T)
+        
+        # for pegasos, eta = 1.0 / (alpha * t)
+        #eta = _get_eta(learning_rate, alpha, eta0, power_t, t)
 
-        # Callback
-        if has_callback and t % n_calls == 0:
-            ret = callback(self)
-            if ret is not None:
-                break
+        # Compute current prediction.
+        #pred = _k_pred(U, K, S, X, gamma, t)
 
-    # Finalize.
-    if penalty == 2:
-        for l in xrange(n_vectors):
-            if w_scales[l] != 1.0:
-                W[l] *= w_scales[l]
-    elif penalty == 12:
-        _l1l2_finalize(<double*>delta.data, <LONG*>timestamps.data,
-                       W, t)
+        #for hinge loss: update=y[i] if erred, 0 if not
+        #update = loss.get_update(pred, y[i])
+        if pred*y[i] < 0:
+          test_err += 1.0
+        if pred == 0: # we at least will guess randomly
+          test_err += 0.5
+        if verbose and i%1000 == 1:
+          print "test_err =", test_err, i, n_test_samples, pred, y[i]
+        #print "test_err =", test_err, i, n_test_samples, pred, y[i]
+        #test_regret += loss.loss(pred, y[i])
+        # no update for testing
+        # Update if necessary.
+        # if update != 0:
+        #     update_eta = update * eta
+        #for j in xrange(t-1):
+        # U = (1 - alpha * eta) * U
+        # U[t-1] = update * eta
+    #compute W, actually dont have to
+    #_k_W(U, W, X, S, t)
+    test_acc = 1.0 - test_err/n_test_samples
+    return test_acc
 

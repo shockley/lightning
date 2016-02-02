@@ -13,6 +13,8 @@ from sklearn.preprocessing import LabelEncoder
 from .randomkit import RandomState
 
 
+
+
 class BaseEstimator(_BaseEstimator):
 
     def _get_random_state(self):
@@ -37,6 +39,8 @@ class BaseEstimator(_BaseEstimator):
 
 
 class BaseClassifier(BaseEstimator, ClassifierMixin):
+
+    
 
     def predict_proba(self, X):
         if len(self.classes_) != 2:
@@ -83,6 +87,28 @@ class BaseClassifier(BaseEstimator, ClassifierMixin):
         if hasattr(self, "intercept_"):
             pred += self.intercept_
         return pred
+
+    #shockley
+    def avg_loss(self, X, y):
+        LOSS = 0.0
+        pred = self.decision_function(X).ravel()
+        assert len(y)==len(pred)
+        for i in xrange(len(y)):
+            z = y[i] * pred[i]
+            loss = 0.0
+            if self.loss == "log":
+                if z > 18.0:
+                    loss = np.exp(-z)
+                if z < -18.0:
+                    loss = -z
+                else:
+                    loss = np.log(1.0 + np.exp(-z))
+            if self.loss == "hinge":
+                if z <= 1.0:
+                    loss = 1.0 - z
+            LOSS += loss
+        LOSS = LOSS / len(y)
+        return LOSS
 
     def predict(self, X):
         pred = self.decision_function(X)

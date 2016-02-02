@@ -9,6 +9,7 @@ from sklearn.preprocessing import LabelBinarizer
 from .base import BaseClassifier, BaseRegressor
 from .dataset_fast import get_dataset
 from .sdca_fast import _prox_sdca_fit
+#from .sdca_fast import _total_loss
 
 
 class _BaseSDCA(object):
@@ -70,6 +71,24 @@ class _BaseSDCA(object):
 
         return self
 
+    #shockley
+    # def _avg_loss(self, X, y):
+    #     n_samples, n_features = X.shape
+    #     rs = self._get_random_state()
+
+    #     self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
+    #     Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
+    #                           dtype=np.float64)
+    #     n_vectors = Y.shape[1]
+
+    #     ds = get_dataset(X)
+
+    #     for i in xrange(n_vectors):
+    #         LOSS = _total_loss(self, self.coef_[i],
+    #                      ds, Y[:, i],
+    #                      self._get_loss())
+    #         LOSS /= n_samples
+    #     return LOSS
 
 class SDCAClassifier(BaseClassifier, _BaseSDCA):
     """
@@ -95,6 +114,8 @@ class SDCAClassifier(BaseClassifier, _BaseSDCA):
         self.n_calls = n_calls
         self.verbose = verbose
         self.random_state = random_state
+        #shockley
+        #self.coef_ = None
 
     def _get_loss(self):
         losses = {
@@ -105,6 +126,11 @@ class SDCAClassifier(BaseClassifier, _BaseSDCA):
             "squared_hinge": 4,
         }
         return losses[self.loss]
+    
+    #shockley
+    #def avg_loss(self, X, y):
+    #    LOSS = self._avg_loss(X, y)
+    #    return LOSS
 
     def fit(self, X, y):
         self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)

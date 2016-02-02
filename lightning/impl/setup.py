@@ -3,12 +3,15 @@ import os.path
 import numpy
 
 
+
 def configuration(parent_package='', top_path=None):
     from numpy.distutils.misc_util import Configuration
 
     config = Configuration('impl', parent_package, top_path)
 
     randomdir = os.path.join(top_path, "lightning", "impl", "randomkit")
+
+    
 
     config.add_extension('adagrad_fast',
                          sources=['adagrad_fast.cpp'],
@@ -48,6 +51,10 @@ def configuration(parent_package='', top_path=None):
 
     config.add_extension('svrg_fast',
                          sources=['svrg_fast.cpp'],
+                         include_dirs=[numpy.get_include(), randomdir])
+
+    config.add_extension('karma_sgd_fast',
+                         sources=['karma_sgd_fast.cpp'],
                          include_dirs=[numpy.get_include(), randomdir])
 
     config.add_subpackage('datasets')

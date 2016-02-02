@@ -85,6 +85,39 @@ cdef _sqnorms(RowDataset X,
             dot += data[jj] * data[jj]
         sqnorms[i] = dot
 
+#shockley
+# def _total_loss(self,
+#              np.ndarray[double, ndim=1, mode='c'] w,
+#              RowDataset X,
+#              np.ndarray[double, ndim=1]y,
+#              int loss):
+#     if loss != 1:
+#         #only supports hinge
+#         return -1.0
+#     cdef double LOSS = 0.0
+#     cdef Py_ssize_t n_samples = X.get_n_samples()
+#     cdef Py_ssize_t n_features = X.get_n_features()
+#     # Data pointers.
+#     cdef double* data
+#     cdef int* indices
+#     cdef int n_nz
+
+#     for i in xrange(n_samples):
+#         X.get_row_ptr(i, &indices, &data, &n_nz)
+        
+#         #get prediction
+#         p = 0.0
+#         for jj in xrange(n_nz):
+#             j = indices[jj]
+#             p += w[j] * data[jj]
+        
+#         #get loss (hinge)
+#         z = p * y[i]
+#         if z <= 1.0:
+#             LOSS += (1.0 - z)
+#         #LOSS += 0.0
+#     return LOSS
+
 
 def _dual_cd(self,
              np.ndarray[double, ndim=1, mode='c'] w,

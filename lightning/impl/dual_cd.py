@@ -20,7 +20,7 @@ from .dataset_fast import get_dataset
 from .dual_cd_fast import _dual_cd
 from .dual_cd_fast import _dual_cd_auc
 from .dual_cd_fast import _dual_cd_svr
-
+#from .dual_cd_fast import _total_loss
 
 class LinearSVC(BaseClassifier):
     """Estimator for learning linear support vector machine by coordinate
@@ -102,6 +102,25 @@ class LinearSVC(BaseClassifier):
                 "l2": 2,
                 "squared_hinge": 2}
         return loss[self.loss]
+
+    #shockley
+    # def avg_loss(self, X, y):
+    #     n_samples, n_features = X.shape
+    #     rs = self._get_random_state()
+
+    #     self.label_binarizer_ = LabelBinarizer(neg_label=-1, pos_label=1)
+    #     Y = np.asfortranarray(self.label_binarizer_.fit_transform(y),
+    #                           dtype=np.float64)
+    #     n_vectors = Y.shape[1]
+
+    #     ds = get_dataset(X)
+
+    #     for i in xrange(n_vectors):
+    #         LOSS = _total_loss(self, self.coef_[i],
+    #                      ds, Y[:, i],
+    #                      self._get_loss())
+    #         LOSS /= n_samples
+    #     return LOSS
 
     def fit(self, X, y):
         """Fit model according to X and y.
