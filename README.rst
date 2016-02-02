@@ -1,5 +1,8 @@
 .. -*- mode: rst -*-
 
+.. image:: https://travis-ci.org/mblondel/lightning.svg?branch=master
+    :target: https://travis-ci.org/mblondel/lightning
+
 lightning
 ==========
 
@@ -16,8 +19,8 @@ Solvers supported:
 
 - primal coordinate descent
 - dual coordinate descent (SDCA, Prox-SDCA)
-- SGD, AdaGrad, SAG, SVRG
-- FISTA, SpaRSA
+- SGD, AdaGrad, SAG, SAGA, SVRG
+- FISTA
 
 Example
 -------
@@ -49,16 +52,16 @@ penalty on the News20 dataset (c.f., `Blondel et al. 2013
     clf.fit(X, y)
 
     # Accuracy
-    print clf.score(X, y)
+    print(clf.score(X, y))
 
     # Percentage of selected features
-    print clf.n_nonzero(percentage=True)
+    print(clf.n_nonzero(percentage=True))
 
 Dependencies
 ------------
 
 lightning needs Python >= 2.7, setuptools, Numpy >= 1.3, SciPy >= 0.7,
-scikit-learn >= 0.14 and a working C/C++ compiler.
+scikit-learn >= 0.15 and a working C/C++ compiler.
 
 To run the tests you will also need nose >= 0.10.
 
