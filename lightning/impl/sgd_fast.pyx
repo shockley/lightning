@@ -379,7 +379,7 @@ def _binary_sgd(self,
         # Retrieve row.
         X.get_row_ptr(i, &indices, &data, &n_nz)
 
-        #black out the data
+        #black_out the data
         if black_out > 0.0 and black_out <= 1.0:
           
           indices_new= np.zeros(n_nz, dtype=np.int64)
@@ -389,8 +389,10 @@ def _binary_sgd(self,
               indices_new[nnz_new] = indices[i]
               nnz_new = nnz_new + 1
           n_nz = nnz_new
+          indices_new= indices_new[0:n_nz-1]
           #&indices = <int*> indices_new[0:n_nz-1].data
-          indices = <int*> indices_new[0:n_nz-1].data
+          #indices_new = indices_new[0:n_nz-1].data
+          indices = <int*> indices_new.data
           print "blacked out with", black_out
 
 

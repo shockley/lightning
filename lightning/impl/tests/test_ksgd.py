@@ -19,10 +19,9 @@ import sys
 sys.path.append('../../../../../synthetic_yahoo_movie/sibm_auto/code/')
 import utility as util
 
-MODELS = ["sdca",#"karma",
-"nb","adagrad"]
+#MODELS = ["sgd",#"karma","nb","adagrad"]
 
-#MODELS = ["sdca","linearsvc","adagrad","sgd"]
+MODELS = ["sgd"]
 lossfunc = "hinge"
 
 # MODELS = ["sag","sgd","adagrad"]
@@ -59,7 +58,7 @@ def test(x,y,model):
 	rs = int(100 * random.random())
 	x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.33, random_state=rs)
 
-	epoch = 1e2
+	epoch = 1e4
 	large_epoch = 1e3
 	tol = 1e-4
 	# we downplay regularization / focus on penalty
@@ -72,7 +71,7 @@ def test(x,y,model):
 		#regularization /= x_train.shape[0]
 		clf = SDCAClassifier(alpha = regularization, loss=lossfunc, max_iter=epoch, tol =tol, verbose = True)
 	elif model == "sgd":
-		clf = SGDClassifier(random_state=rs, loss=lossfunc, learning_rate="pegasos", max_iter=epoch, shuffle=True)
+		clf = SGDClassifier(random_state=rs, loss=lossfunc, learning_rate="pegasos", max_iter=epoch, black_out=0.3, shuffle=True, verbose=True)
 	elif model == "nb":
 		clf = MultinomialNB()
 	elif model == "linearsvc":
