@@ -11,7 +11,7 @@ from libc.stdlib cimport rand
 cdef extern from "stdlib.h":
     int RAND_MAX
 
-
+import sys
 import numpy as np
 cimport numpy as np
 
@@ -997,6 +997,7 @@ def _binary_sgd_test(self,
             random_state.shuffle(index)
         if t > 0 and (t-1) % disp_freq == 0:
           print "epoch", eid, "iter", ii, "train_regret", train_regret/t, "train_err", train_err/t
+          sys.stdout.flush()
 
         if (t-1) % test_freq == 0:
           test_err = 0.0
